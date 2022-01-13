@@ -35,7 +35,7 @@ def compute_epoch_loss_vae(model, data_loader, loss_fn, device):
 
 def train_vae(num_epochs, model, optimizer, device, 
                          train_loader, test_loader=None, loss_fn=None,
-                         logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model=None):
+                         logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None):
     
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -108,6 +108,14 @@ def train_vae(num_epochs, model, optimizer, device,
         print('Time elapsed: %.2f min' % ((time.time() - start_time)/60))
 
     print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
+
+    if save_model_file is not None:
+        checkpoint = {
+            "epoch": num_epochs,
+            "model_state": model.state_dict(),
+            "optim_state": optimizer.state_dict()
+        }
+        torch.save(checkpoint, save_model_file)
     
     return log_dict
 

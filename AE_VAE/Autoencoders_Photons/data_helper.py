@@ -52,7 +52,7 @@ def get_dataloaders_and_standarscaler_photons(path, batch_size, test_fraction=0.
     X_train, X_test = train_test_split(
         X, test_size=test_fraction, random_state=0, shuffle=True)
 
-    stdsc = MinMaxScaler()
+    stdsc = StandardScaler()
     X_train_std = stdsc.fit_transform(X_train)
     X_test_std = stdsc.transform(X_test)  # wykorzystujemy standaryzacje z danych treningowych
     X_train_std, X_test_std
