@@ -34,6 +34,71 @@ class ToTensorFromNdarray:
         return torch.from_numpy(sample)
 
 
+def get_dataloaders_and_standarscaler_photons_other_shape(path, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
+
+    if train_transforms is None:
+        train_transforms = ToTensorFromNdarray()
+
+    if test_transforms is None:
+        test_transforms = ToTensorFromNdarray()
+
+    photons = np.load(path)
+    tmp_X = np.zeros((10000001, 6), dtype=np.float32)
+    np.copyto(tmp_X, photons[:,:-1])
+
+    df_data = pd.DataFrame(tmp_X, columns=['X', 'Y', 'dX', 'dY', 'dZ', 'E'])
+
+    X = df_data.iloc[:, :].values
+    X_train, X_test = train_test_split(
+        X, test_size=test_fraction, random_state=0, shuffle=True)
+
+    stdsc = StandardScaler()
+    X_train_std = stdsc.fit_transform(X_train)
+    X_test_std = stdsc.transform(X_test)  # wykorzystujemy standaryzacje z danych treningowych
+    X_train_std, X_test_std
+
+    train_dataset = PhotonsDataset(
+        data=X_train_std, transform=train_transforms)
+
+    valid_dataset = PhotonsDataset(
+        data=X_train_std, transform=test_transforms)
+
+    test_dataset = PhotonsDataset(data=X_test_std, transform=test_transforms)
+
+    if validation_fraction is not None:
+        num = int(validation_fraction * len(X_train_std))
+        train_indices = torch.arange(0, len(X_train_std) - num)
+        valid_indices = torch.arange(len(X_train_std) - num, len(X_train_std))
+
+        train_sampler = SubsetRandomSampler(train_indices)
+        valid_sampler = SubsetRandomSampler(valid_indices)
+
+        valid_loader = DataLoader(dataset=valid_dataset,
+                                  batch_size=batch_size,
+                                  num_workers=num_workers,
+                                  sampler=valid_sampler)
+
+        train_loader = DataLoader(dataset=train_dataset,
+                                  batch_size=batch_size,
+                                  num_workers=num_workers,
+                                  drop_last=True,
+                                  sampler=train_sampler)
+    else:
+        train_loader = DataLoader(dataset=train_dataset,
+                                  batch_size=batch_size,
+                                  num_workers=num_workers,
+                                  shuffle=True)
+
+    test_loader = DataLoader(dataset=test_dataset,
+                             batch_size=batch_size,
+                             num_workers=num_workers,
+                             shuffle=False)
+
+    if validation_fraction is None:
+        return train_loader, test_loader
+    else:
+        return train_loader, valid_loader, test_loader, stdsc
+
 def get_dataloaders_and_standarscaler_photons(path, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
 
     if train_transforms is None:
