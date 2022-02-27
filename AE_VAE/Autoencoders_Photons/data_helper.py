@@ -34,7 +34,7 @@ class ToTensorFromNdarray:
         return torch.from_numpy(sample)
 
 
-def get_dataloaders_and_standarscaler_photons_other_shape(path, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
+def get_dataloaders_and_standarscaler_photons_from_numpy(tmp_X, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
 
     if train_transforms is None:
         train_transforms = ToTensorFromNdarray()
@@ -42,9 +42,9 @@ def get_dataloaders_and_standarscaler_photons_other_shape(path, batch_size, test
     if test_transforms is None:
         test_transforms = ToTensorFromNdarray()
 
-    photons = np.load(path)
-    tmp_X = np.zeros((10000001, 6), dtype=np.float32)
-    np.copyto(tmp_X, photons[:,:-1])
+    # photons = np.load(path)
+    # tmp_X = np.zeros((10000001, 6), dtype=np.float32)
+    # np.copyto(tmp_X, photons[:,:-1])
 
     df_data = pd.DataFrame(tmp_X, columns=['X', 'Y', 'dX', 'dY', 'dZ', 'E'])
 
