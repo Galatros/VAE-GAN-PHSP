@@ -41,7 +41,7 @@ def compute_epoch_loss_vae(model, data_loader, loss_fn, device):
 
 def train_vae(num_epochs, model, optimizer, device,
               train_loader, test_loader=None, loss_fn=None,
-              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None):
+              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -121,6 +121,8 @@ def train_vae(num_epochs, model, optimizer, device,
     print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
 
     if save_model_file is not None:
+        if total_num_of_epochs is not None:
+            num_epochs=total_num_of_epochs
         checkpoint = {
             "epoch": num_epochs,
             "model_name": model._get_name(),
@@ -137,7 +139,7 @@ def train_vae(num_epochs, model, optimizer, device,
 
 def train_vae_mmd(num_epochs, model, optimizer, device,
                   train_loader, test_loader=None, loss_fn=None,
-                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None):
+                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -222,6 +224,8 @@ def train_vae_mmd(num_epochs, model, optimizer, device,
     print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
 
     if save_model_file is not None:
+        if total_num_of_epochs is not None:
+            num_epochs=total_num_of_epochs
         checkpoint = {
             "epoch": num_epochs,
             "model_name": model._get_name(),
