@@ -41,7 +41,7 @@ def compute_epoch_loss_vae(model, data_loader, loss_fn, device):
 
 def train_vae(num_epochs, model, optimizer, device,
               train_loader, test_loader=None, loss_fn=None,
-              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None):
+              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -123,6 +123,8 @@ def train_vae(num_epochs, model, optimizer, device,
     if save_model_file is not None:
         if total_num_of_epochs is not None:
             num_epochs=total_num_of_epochs
+        if log_dict_old is not None:
+            log_dict={ key:log_dict_old.get(key,[])+log_dict.get(key,[]) for key in set(list(log_dict_old.keys())+list(log_dict.keys())) }
         checkpoint = {
             "epoch": num_epochs,
             "model_name": model._get_name(),
@@ -139,7 +141,7 @@ def train_vae(num_epochs, model, optimizer, device,
 
 def train_vae_mmd(num_epochs, model, optimizer, device,
                   train_loader, test_loader=None, loss_fn=None,
-                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None):
+                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -226,6 +228,8 @@ def train_vae_mmd(num_epochs, model, optimizer, device,
     if save_model_file is not None:
         if total_num_of_epochs is not None:
             num_epochs=total_num_of_epochs
+        if log_dict_old is not None:
+            log_dict={ key:log_dict_old.get(key,[])+log_dict.get(key,[]) for key in set(list(log_dict_old.keys())+list(log_dict.keys())) }
         checkpoint = {
             "epoch": num_epochs,
             "model_name": model._get_name(),
