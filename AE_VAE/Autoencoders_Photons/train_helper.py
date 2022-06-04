@@ -1,4 +1,5 @@
 import time
+from numpy import source
 
 import torch
 import torch.nn as nn
@@ -41,7 +42,7 @@ def compute_epoch_loss_vae(model, data_loader, loss_fn, device):
 
 def train_vae(num_epochs, model, optimizer, device,
               train_loader, test_loader=None, loss_fn=None,
-              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None):
+              logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None, constrains_std_min=None, constrains_std_max=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -132,16 +133,123 @@ def train_vae(num_epochs, model, optimizer, device,
             "optim_state": optimizer.state_dict(),
             "batch_size": batchsize,
             "reconstruction_term_weight": reconstruction_term_weight,
-            "log_dict": log_dict
+            "log_dict": log_dict,
+            "constrains_std_min": constrains_std_min,
+            "constrains_std_max": constrains_std_max
         }
         torch.save(checkpoint, save_model_file)
 
     return log_dict
 
+def train_vae_mkmmd(num_epochs, model, optimizer, device,
+                  train_loader, test_loader=None, loss_fn=None,
+                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None, constrains_std_min=None, constrains_std_max=None):
+
+    log_dict = {'train_combined_loss_per_batch': [],
+                'train_combined_loss_per_epoch': [],
+                'train_reconstruction_loss_per_batch': [],
+                'train_kl_loss_per_batch': [],
+                'test_combined_loss_per_epoch': []}
+
+    if loss_fn is None:
+        loss_fn = F.mse_loss
+
+    mmd_loss_function = MMD_loss()
+    mmd_loss_function.to(device)
+
+    start_time = time.time()
+    for epoch in range(num_epochs):
+
+        model.train()
+        for batch_idx, features in enumerate(train_loader):
+
+            features = features.to(device)
+
+            encoded, z_mean, z_log_var, decoded = model(features)
+
+            kl_div = -0.5 * torch.sum(1 + z_log_var -
+                                      z_mean**2 - torch.exp(z_log_var), axis=1)
+            batchsize = kl_div.size(0)
+            kl_div = kl_div.mean()
+
+            mmd_loss = mmd_loss_function(source=encoded, target=torch.randn_like(encoded, device=device))
+
+            tmp_loss = loss_fn(decoded, features, reduction='none')
+            # print(tmp_loss.shape)
+            tmp_loss = tmp_loss.view(
+                batchsize, -1).sum(axis=1)  # aixs ma byc 1
+            # print(tmp_loss.shape)
+            tmp_loss = tmp_loss.mean()
+           # print(tmp_loss.shape)
+
+            loss = reconstruction_term_weight*tmp_loss+mmd_loss
+            optimizer.zero_grad()
+
+            loss.backward()
+
+            optimizer.step()
+
+            log_dict['train_combined_loss_per_batch'].append(loss.item())
+            log_dict['train_reconstruction_loss_per_batch'].append(
+                tmp_loss.item())
+            log_dict['train_kl_loss_per_batch'].append(mmd_loss.item())
+
+            if not batch_idx % logging_interval:
+                print('Epoch: %03d/%03d | Batch %04d/%04d | Loss: %.4f'
+                      % (epoch+1, num_epochs, batch_idx,
+                          len(train_loader), loss))
+
+        if not skip_epoch_stats:
+            model.eval()
+
+            with torch.set_grad_enabled(False):  # save memory during inference
+
+                train_loss = compute_epoch_loss_vae(
+                    model, train_loader, loss_fn, device)
+                print('***Epoch: %03d/%03d | Loss: %.3f' % (
+                      epoch+1, num_epochs, train_loss))
+                log_dict['train_combined_loss_per_epoch'].append(
+                    train_loss.item())
+
+        if test_loader is not None and not skip_epoch_stats:
+            model.eval()
+
+            with torch.set_grad_enabled(False):  # save memory during inference
+
+                test_loss = compute_epoch_loss_vae(
+                    model, test_loader, loss_fn, device)
+                print('Test***Epoch: %03d/%03d | Loss: %.3f' % (
+                      epoch+1, num_epochs, test_loss))
+                log_dict['test_combined_loss_per_epoch'].append(
+                    test_loss.item())
+
+        print('Time elapsed: %.2f min' % ((time.time() - start_time)/60))
+
+    print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
+
+    if save_model_file is not None:
+        if total_num_of_epochs is not None:
+            num_epochs=total_num_of_epochs
+        if log_dict_old is not None:
+            log_dict={ key:log_dict_old.get(key,[])+log_dict.get(key,[]) for key in set(list(log_dict_old.keys())+list(log_dict.keys())) }
+        checkpoint = {
+            "epoch": num_epochs,
+            "model_name": model._get_name(),
+            "model_state": model.state_dict(),
+            "optim_state": optimizer.state_dict(),
+            "batch_size": batchsize,
+            "reconstruction_term_weight": reconstruction_term_weight,
+            "log_dict": log_dict,
+            "constrains_std_min": constrains_std_min,
+            "constrains_std_max": constrains_std_max
+        }
+        torch.save(checkpoint, save_model_file)
+
+    return log_dict
 
 def train_vae_mmd(num_epochs, model, optimizer, device,
                   train_loader, test_loader=None, loss_fn=None,
-                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None):
+                  logging_interval=100,  skip_epoch_stats=False, reconstruction_term_weight=1, save_model_file=None, total_num_of_epochs=None, log_dict_old=None, constrains_std_min=None, constrains_std_max=None):
 
     log_dict = {'train_combined_loss_per_batch': [],
                 'train_combined_loss_per_epoch': [],
@@ -237,7 +345,9 @@ def train_vae_mmd(num_epochs, model, optimizer, device,
             "optim_state": optimizer.state_dict(),
             "batch_size": batchsize,
             "reconstruction_term_weight": reconstruction_term_weight,
-            "log_dict": log_dict
+            "log_dict": log_dict,
+            "constrains_std_min": constrains_std_min,
+            "constrains_std_max": constrains_std_max
         }
         torch.save(checkpoint, save_model_file)
 

@@ -6,8 +6,12 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, Normalizer, MinMaxScaler
 
+from typing import List, Tuple, Type
+
 import numpy as np
 import pandas as pd
+import copy
+import random
 
 
 class PhotonsDataset(Dataset):
@@ -30,8 +34,34 @@ class PhotonsDataset(Dataset):
 
 class ToTensorFromNdarray:
     def __call__(self, sample):
+        # Returns a tensor made from ndarray
         sample
         return torch.from_numpy(sample)
+
+
+def get_standarized_constrains(constrains_list_min: List[float], constrains_list_max: List[float], stdcs: Type[StandardScaler], device: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    # Returns tensors created on a device with constraining parameters standardized with the help of a StandardScaler object
+    constrains_min = np.asarray(
+        constrains_list_min, dtype=np.float32).reshape(1, -1)
+    constrains_max = np.asarray(
+        constrains_list_max, dtype=np.float32).reshape(1, -1)
+    standarized_constrains_min = torch.tensor(
+        stdcs.transform(constrains_min), device=device)
+    standarized_constrains_max = torch.tensor(
+        stdcs.transform(constrains_max), device=device)
+    return standarized_constrains_min, standarized_constrains_max
+
+def get_photons_with_introduced_XY_symmetries(photons: np.ndarray,random_seed: int)-> np.ndarray:
+    # Returns photons with entered X symmetry and Y symmetry depending on random_seed
+    random.seed(random_seed)
+    symetrized_photons=copy.deepcopy(photons)
+    for photon in symetrized_photons:
+        if random.uniform(0,1)>0.5:
+            photon[1]=-photon[1]
+            photon[2]=-photon[2]
+            photon[3]=-photon[3]
+            photon[4]=-photon[4]
+    return symetrized_photons
 
 
 def get_dataloaders_and_standarscaler_photons_from_numpy(tmp_X, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
@@ -54,7 +84,8 @@ def get_dataloaders_and_standarscaler_photons_from_numpy(tmp_X, batch_size, test
 
     stdsc = StandardScaler()
     X_train_std = stdsc.fit_transform(X_train)
-    X_test_std = stdsc.transform(X_test)  # wykorzystujemy standaryzacje z danych treningowych
+    # wykorzystujemy standaryzacje z danych treningowych
+    X_test_std = stdsc.transform(X_test)
     X_train_std, X_test_std
 
     train_dataset = PhotonsDataset(
@@ -76,28 +107,32 @@ def get_dataloaders_and_standarscaler_photons_from_numpy(tmp_X, batch_size, test
         valid_loader = DataLoader(dataset=valid_dataset,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
-                                  sampler=valid_sampler)
+                                  sampler=valid_sampler,
+                                  pin_memory=True)
 
         train_loader = DataLoader(dataset=train_dataset,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
                                   drop_last=True,
-                                  sampler=train_sampler)
+                                  sampler=train_sampler,
+                                  pin_memory=True)
     else:
         train_loader = DataLoader(dataset=train_dataset,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
-                                  shuffle=True)
+                                  shuffle=True,
+                                  pin_memory=True)
 
     test_loader = DataLoader(dataset=test_dataset,
                              batch_size=batch_size,
                              num_workers=num_workers,
-                             shuffle=False)
+                             shuffle=False, pin_memory=True)
 
     if validation_fraction is None:
         return train_loader, test_loader
     else:
         return train_loader, valid_loader, test_loader, stdsc
+
 
 def get_dataloaders_and_standarscaler_photons(path, batch_size, test_fraction=0.2, validation_fraction=None, train_transforms=None, test_transforms=None, num_workers=4):
 
@@ -119,7 +154,8 @@ def get_dataloaders_and_standarscaler_photons(path, batch_size, test_fraction=0.
 
     stdsc = StandardScaler()
     X_train_std = stdsc.fit_transform(X_train)
-    X_test_std = stdsc.transform(X_test)  # wykorzystujemy standaryzacje z danych treningowych
+    # wykorzystujemy standaryzacje z danych treningowych
+    X_test_std = stdsc.transform(X_test)
     X_train_std, X_test_std
 
     train_dataset = PhotonsDataset(
