@@ -1,0 +1,127 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
+
+class Lit_BetaVAE(pl.LightningModule):
+    def __init__(self, learning_rate=0.0005, beta_weight=1, name='BetaVAE'):
+        super(Lit_BetaVAE, self).__init__()
+        self.name=name
+        self.learning_rate=learning_rate
+        self.beta_weight=beta_weight
+        self.save_hyperparameters()
+
+        self.encoder = nn.Sequential(
+            nn.Linear(6, 400),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(400),
+            torch.nn.Linear(400, 400),
+            nn.BatchNorm1d(400),
+            nn.LeakyReLU(),
+            torch.nn.Linear(400, 400),
+            nn.BatchNorm1d(400),
+            nn.LeakyReLU(),
+            torch.nn.Linear(400, 400),
+            nn.BatchNorm1d(400),
+            nn.LeakyReLU(),
+            torch.nn.Linear(400, 400),
+            nn.BatchNorm1d(400),
+            nn.LeakyReLU(),
+        )
+
+        self.z_mean = nn.Sequential(
+            nn.Linear(400, 12),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(12),
+            nn.Linear(12, 3)
+
+        )
+
+        self.z_log_var = nn.Sequential(
+            nn.Linear(400, 12),
+            nn.LeakyReLU(),
+            nn.BatchNorm1d(12),
+            nn.Linear(12, 3)
+        )
+
+        self.decoder = nn.Sequential(
+            nn.Linear(3, 12),
+            nn.ReLU(),
+            nn.Linear(12, 400),
+            nn.ReLU(),
+            nn.Linear(400, 400),
+            nn.ReLU(),
+            nn.Linear(400, 400),
+            nn.ReLU(),
+            nn.Linear(400, 400),
+            nn.ReLU(),
+            nn.Linear(400, 400),
+            nn.ReLU(),
+            nn.Linear(400, 6)
+        )
+
+    def reparameterize(self, z_mu, z_log_var):
+        eps = torch.randn(z_mu.size(0), z_mu.size(1), device=self.device)
+        z = z_mu + eps * torch.exp(z_log_var/2.)
+        return z
+
+    def forward(self, x):
+        x = self.encoder(x)
+        z_mean, z_log_var = self.z_mean(x), self.z_log_var(x)
+        encoded = self.reparameterize(z_mean, z_log_var)
+        decoded = self.decoder(encoded)
+        return encoded, z_mean, z_log_var, decoded
+
+    def training_step(self, batch, _):
+        features = batch
+        # Forward pass
+        _, z_mean, z_log_var, decoded = self(features)
+        kld_loss = -0.5 * torch.sum(1 + z_log_var -
+                                      z_mean**2 - torch.exp(z_log_var), axis=1)
+        batchsize = kld_loss.size(0)
+        kld_loss = kld_loss.mean()
+        
+        mse_loss = F.mse_loss(features, decoded, reduction='none')
+        mse_loss = mse_loss.view(batchsize,-1).sum(axis=1)
+        mse_loss=mse_loss.mean()
+
+        combined_loss=mse_loss+self.beta_weight*kld_loss
+        
+        train_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "kld_loss": kld_loss.detach()}
+
+        self.log("train_logs", train_logs, on_step=True)
+        return combined_loss
+
+
+    def validation_step(self, batch, _):
+        features = batch
+
+        # Forward pass
+        _, z_mean, z_log_var, decoded = self(features)
+                        
+        kld_loss = -0.5 * torch.sum(1 + z_log_var -
+                                      z_mean**2 - torch.exp(z_log_var), axis=1)
+        batchsize = kld_loss.size(0)
+        kld_loss = kld_loss.mean()
+        
+        mse_loss = F.mse_loss(features, decoded, reduction='none')
+        mse_loss = mse_loss.view(batchsize,-1).sum(axis=1)
+        mse_loss=mse_loss.mean()
+
+        combined_loss=mse_loss+self.beta_weight*kld_loss
+
+        validation_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "kld_loss":kld_loss.detach()}
+        self.log("validation_logs", validation_logs)
+        return combined_loss.detach()
+
+    def validation_epoch_end(self, outputs):
+        # outputs = list of dictionaries
+        # avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        avg_loss = torch.stack([x for x in outputs]).mean()
+        val_epoch_end_logs = {"avg_val_loss": avg_loss.detach()}
+        self.log("validation_epoch_end_logs", val_epoch_end_logs)
+        return avg_loss.detach()
+    
+    
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
