@@ -12,7 +12,7 @@ general_params:
     manual_seed: 1234
 
 DataModule_params:
-    data_path: / data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
+    data_path: /data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
     batch_size: 10000
     num_workers: 0
     test_fraction: 0.0
