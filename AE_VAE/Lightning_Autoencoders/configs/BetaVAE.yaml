@@ -1,8 +1,14 @@
 model_params:
-  name: BetaVAE_new
-  beta_weight: 0.02
-  learning_rate: 0.0005
-  model_architecture_name: VAE_Linear_2605
+  name: BetaVAE
+  beta_weight: 1
+  bias_correction_term: 0.00131
+  learning_rate: 0.005
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+  # model_architecture_name: VAE_Linear_2605
+
+general_params:
+  manual_seed: 1234
 
 DataModule_params:
   data_path: /data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
@@ -22,14 +28,14 @@ DataModule_params:
   
 checkpoint_params:
   # dirpath: /home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lighting_Autoencoders/checkpoints/BetaVAE/
-  filename: checkpoint_BetaVAE_date2805_{epoch}epoch
+  filename: checkpoint_BetaVAE_0906_{epoch}epoch
   auto_insert_metric_name: false
   save_last: true
   save_top_k: -1
-  every_n_epochs: 1
+  every_n_epochs: 10
 
 trainer_params:
-  max_epochs: 6
+  max_epochs: 100
   log_every_n_steps: 1
 
 CSVLogger_params:

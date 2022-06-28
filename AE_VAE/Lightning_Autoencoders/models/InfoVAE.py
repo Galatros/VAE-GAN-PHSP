@@ -7,17 +7,19 @@ from torch import Tensor
 
 
 class Lit_InfoVAE(pl.LightningModule):
-    def __init__(self, learning_rate=0.0005, name='InfoVAE', mmd_weight = 110,  kernel_type='imq', kld_weight=-9.0, reconstruction_weight=10.5, bias_correction_term=0.00131,lantent_var=2.0):
+    def __init__(self, learning_rate=0.0005, name='InfoVAE', mmd_weight=110,  kernel_type='imq', kld_weight=-9.0, reconstruction_weight=10.5, bias_correction_term=0.00131, lantent_var=2.0, weight_decay=0.0, scheduler_gamma=0.95):
         super(Lit_InfoVAE, self).__init__()
 
-        self.name=name
-        self.learning_rate=learning_rate
-        self.mmd_weight=mmd_weight
-        self.kernel_type=kernel_type
-        self.kld_weight=kld_weight
-        self.reconstruction_weight=reconstruction_weight
-        self.bias_correction_term = bias_correction_term #batch_size/num_of_photons
-        self.lantent_var=lantent_var
+        self.name = name
+        self.learning_rate = learning_rate
+        self.mmd_weight = mmd_weight
+        self.kernel_type = kernel_type
+        self.kld_weight = kld_weight
+        self.reconstruction_weight = reconstruction_weight
+        self.bias_correction_term = bias_correction_term  # batch_size/num_of_photons
+        self.lantent_var = lantent_var
+        self.weight_decay = weight_decay
+        self.scheduler_gamma = scheduler_gamma
 
         self.save_hyperparameters()
 
@@ -43,7 +45,7 @@ class Lit_InfoVAE(pl.LightningModule):
             nn.Linear(400, 12),
             nn.LeakyReLU(),
             nn.BatchNorm1d(12),
-            nn.Linear(12,12)
+            nn.Linear(12, 4)
 
         )
 
@@ -51,11 +53,11 @@ class Lit_InfoVAE(pl.LightningModule):
             nn.Linear(400, 12),
             nn.LeakyReLU(),
             nn.BatchNorm1d(12),
-            nn.Linear(12, 12)
+            nn.Linear(12, 4)
         )
 
         self.decoder = nn.Sequential(
-            nn.Linear(12, 12),
+            nn.Linear(4, 12),
             nn.ReLU(),
             nn.Linear(12, 400),
             nn.ReLU(),
@@ -81,15 +83,15 @@ class Lit_InfoVAE(pl.LightningModule):
         encoded = self.reparameterize(z_mean, z_log_var)
         decoded = self.decoder(encoded)
         return encoded, z_mean, z_log_var, decoded
-    
+
     # def guassian_kernel(self, source, target, kernel_mul=2.0, kernel_num=5, fix_sigma=None):
     #     n_samples = int(source.size()[0]) + int(target.size()[0])
     #     total = torch.cat([source, target], dim=0)
 
     #     total0 = total.unsqueeze(0).expand(
-	# 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        # 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
     #     total1 = total.unsqueeze(1).expand(
-	# 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
+        # 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
     #     L2_distance = ((total0-total1)**2).sum(2)
     #     if fix_sigma:
     #         bandwidth = fix_sigma
@@ -98,9 +100,9 @@ class Lit_InfoVAE(pl.LightningModule):
     #         bandwidth /= kernel_mul ** (kernel_num // 2)
     #         bandwidth_list = [bandwidth * (kernel_mul**i) for i in range(kernel_num)]
     #         kernel_val = [torch.exp(-L2_distance / bandwidth_temp)
-	# 							for bandwidth_temp in bandwidth_list]
+        # 							for bandwidth_temp in bandwidth_list]
     #     return sum(kernel_val)
-    
+
     # def mkmmd_loss_function(self, source, target):
     #     batch_size = int(source.size()[0])
     #     kernels = self.guassian_kernel(source, target, kernel_mul=self.kernel_mul, kernel_num=self.kernel_num, fix_sigma=self.fix_sigma)
@@ -111,18 +113,19 @@ class Lit_InfoVAE(pl.LightningModule):
     #     loss = torch.mean(XX + YY - XY -YX)
     #     return loss
 
-    def info_loss_function(self,decoded,input,encoded,z_mean,z_log_var) -> dict:
+    def info_loss_function(self, decoded, input, encoded, z_mean, z_log_var) -> dict:
 
         batch_size = input.size(0)
-        bias_corr = batch_size *  (batch_size - 1)
+        bias_corr = batch_size * (batch_size - 1)
 
-        recons_loss =F.mse_loss(decoded, input)
+        recons_loss = F.mse_loss(decoded, input)
         mmd_loss = self.compute_mmd(encoded)
-        kld_loss = torch.mean(-0.5 * torch.sum(1 + z_log_var - z_mean ** 2 - z_log_var.exp(), dim=1), dim=0)
+        kld_loss = torch.mean(-0.5 * torch.sum(1 + z_log_var -
+                              z_mean ** 2 - z_log_var.exp(), dim=1), dim=0)
 
         combined_loss = self.reconstruction_weight * recons_loss + \
-               (1. - self.kld_weight) * self.bias_correction_term * kld_loss + \
-               (self.kld_weight + self.mmd_weight - 1.)/bias_corr * mmd_loss
+            (1. - self.kld_weight) * self.bias_correction_term * kld_loss + \
+            (self.kld_weight + self.mmd_weight - 1.)/bias_corr * mmd_loss
 
         return combined_loss, recons_loss, mmd_loss, -kld_loss
 
@@ -133,8 +136,8 @@ class Lit_InfoVAE(pl.LightningModule):
         D = x1.size(1)
         N = x1.size(0)
 
-        x1 = x1.unsqueeze(-2) # Make it into a column tensor
-        x2 = x2.unsqueeze(-3) # Make it into a row tensor
+        x1 = x1.unsqueeze(-2)  # Make it into a column tensor
+        x2 = x2.unsqueeze(-3)  # Make it into a row tensor
 
         """
         Usually the below lines are not required, especially in our case,
@@ -152,7 +155,6 @@ class Lit_InfoVAE(pl.LightningModule):
             raise ValueError('Undefined kernel type.')
 
         return result
-
 
     def compute_rbf(self,
                     x1: Tensor,
@@ -172,9 +174,9 @@ class Lit_InfoVAE(pl.LightningModule):
         return result
 
     def compute_inv_mult_quad(self,
-                               x1: Tensor,
-                               x2: Tensor,
-                               eps: float = 1e-7) -> Tensor:
+                              x1: Tensor,
+                              x2: Tensor,
+                              eps: float = 1e-7) -> Tensor:
         """
         Computes the Inverse Multi-Quadratics Kernel between x1 and x2,
         given by
@@ -186,7 +188,7 @@ class Lit_InfoVAE(pl.LightningModule):
         """
         z_dim = x2.size(-1)
         C = 2 * z_dim * self.lantent_var
-        kernel = C / (eps + C + (x1 - x2).pow(2).sum(dim = -1))
+        kernel = C / (eps + C + (x1 - x2).pow(2).sum(dim=-1))
 
         # Exclude diagonal elements
         result = kernel.sum() - kernel.diag().sum()
@@ -202,10 +204,9 @@ class Lit_InfoVAE(pl.LightningModule):
         priorz_z__kernel = self.compute_kernel(prior_z, z)
 
         mmd = prior_z__kernel.mean() + \
-              z__kernel.mean() - \
-              2 * priorz_z__kernel.mean()
+            z__kernel.mean() - \
+            2 * priorz_z__kernel.mean()
         return mmd
-
 
     def training_step(self, batch, batch_idx):
         features = batch
@@ -215,40 +216,43 @@ class Lit_InfoVAE(pl.LightningModule):
         #                               z_mean**2 - torch.exp(z_log_var), axis=1)
         # batchsize = batch.size(0)
         # kldiv_loss = kldiv_loss.mean()
-        combined_loss, mse_loss, mmd_loss, kld_loss = self.info_loss_function(decoded=decoded,encoded=encoded,z_mean=z_mean,z_log_var=z_log_var, input=batch)
+        combined_loss, mse_loss, mmd_loss, kld_loss = self.info_loss_function(
+            decoded=decoded, encoded=encoded, z_mean=z_mean, z_log_var=z_log_var, input=batch)
         # mse_loss = F.mse_loss(features, decoded, reduction='none')
         # mse_loss = mse_loss.view(batchsize,-1).sum(axis=1)
         # mse_loss=mse_loss.mean()
 
         # combined_loss=mse_loss+mkmmd_loss
-        
-        train_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "mmd_loss": mmd_loss.detach(), "kld_loss": kld_loss.detach()}
+
+        train_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(
+        ), "mmd_loss": mmd_loss.detach(), "kld_loss": kld_loss.detach()}
         # use key 'log'
         # return {"loss": combined_loss, 'log': tensorboard_logs}
         self.log("train_logs", train_logs, on_step=True)
         return combined_loss
-
 
     def validation_step(self, batch, batch_idx):
         features = batch
 
         # Forward pass
         encoded, z_mean, z_log_var, decoded = self(features)
-                        
+
         # kldiv_loss = -0.5 * torch.sum(1 + z_log_var -
         #                               z_mean**2 - torch.exp(z_log_var), axis=1)
         # batchsize = kldiv_loss.size(0)
         # kldiv_loss = kldiv_loss.mean()
         # batchsize = batch.size(0)
         # kldiv_loss = kldiv_loss.mean()
-        combined_loss, mse_loss, mmd_loss, kld_loss = self.info_loss_function(decoded=decoded,encoded=encoded,z_mean=z_mean,z_log_var=z_log_var, input=batch)
+        combined_loss, mse_loss, mmd_loss, kld_loss = self.info_loss_function(
+            decoded=decoded, encoded=encoded, z_mean=z_mean, z_log_var=z_log_var, input=batch)
         # mse_loss = F.mse_loss(features, decoded, reduction='none')
         # mse_loss = mse_loss.view(batchsize,-1).sum(axis=1)
         # mse_loss=mse_loss.mean()
 
         # combined_loss=mse_loss+mkmmd_loss
 
-        validation_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "mmd_loss": mmd_loss.detach(), "kld_loss": kld_loss.detach()}
+        validation_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(
+        ), "mmd_loss": mmd_loss.detach(), "kld_loss": kld_loss.detach()}
         self.log("validation_logs", validation_logs)
         return combined_loss.detach()
         # return {"val_loss": combined_loss.detach(), 'log': tensorboard_logs}
@@ -262,9 +266,11 @@ class Lit_InfoVAE(pl.LightningModule):
         self.log("validation_epoch_end_logs", val_epoch_end_logs)
         return avg_loss.detach()
         # return {'val_loss': avg_loss.detach(), 'log': tensorboard_logs}
-    
-    
+
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-
-
+        # return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer, gamma=self.scheduler_gamma)
+        return [optimizer], [scheduler]

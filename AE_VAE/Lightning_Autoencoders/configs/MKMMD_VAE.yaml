@@ -4,6 +4,12 @@ model_params:
   kernel_mul: 2.0
   kernel_num: 5
   fix_sigma: null
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+
+
+general_params:
+  manual_seed: 1234
 
 DataModule_params:
   data_path: /data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
