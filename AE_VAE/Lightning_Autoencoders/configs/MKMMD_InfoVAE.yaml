@@ -1,0 +1,47 @@
+model_params:
+  name: MKMMD_InfoVAE
+  learning_rate: 0.005
+  mkmmd_weight: 100
+  kernel_mul: 2.0
+  kernel_num: 5
+  fix_sigma: null
+  kld_weight: -0.5
+  reconstruction_weight: 5
+  bias_correction_term: 0.00131
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+
+general_params:
+  manual_seed: 1234
+
+DataModule_params:
+  data_path: /data1/dose-3d-generative/data/training-data/NPs_without_VR_without_PEAK/photons_E5.65_a2.75_s3.75_shuffled.npy
+  batch_size: 10000
+  num_workers: 0
+  test_fraction: 0.25
+  validation_fraction: 0.25
+  shuffle_train: true
+  random_seed: 123
+  columns_keys:
+  - E
+  - X
+  - Y
+  - dX
+  - dY
+  - dZ
+  
+checkpoint_params:
+  filename: checkpoint_MKMMD_InfoVAE_0606_{epoch}epoch
+  every_n_epochs: 10
+  auto_insert_metric_name: false
+  save_last: true
+  save_top_k: -1
+
+trainer_params:
+  max_epochs: 80
+  log_every_n_steps: 1
+  gradient_clip_val: 0.8 #UWAGA
+
+CSVLogger_params:
+  save_dir: "/home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lightning_Autoencoders/results"
+  name: 'MKMMD_InfoVAE'
