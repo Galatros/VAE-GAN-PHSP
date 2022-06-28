@@ -5,15 +5,18 @@ from models import *
 # from helpers import model_architectures
 from helpers.PhotonsDataModule import PhotonsDataModule
 from helpers.yaml_helper import MyDumper
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning import loggers as pl_loggers
-
+from pytorch_lightning.utilities.seed import seed_everything
+from pytorch_lightning.plugins import DDPPlugin
 
 
 if __name__ == '__main__':
     # Hyperparameters
-    CONFIG_PATH = '/home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lightning_Autoencoders/configs/InfoVAE.yaml'
+    CONFIG_PATH = '/home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lightning_Autoencoders/configs/BetaVAE.yaml'
     LOAD_CHECKPOINT_PATH = None
 
 
@@ -23,6 +26,9 @@ if __name__ == '__main__':
             config = yaml.safe_load(file)
         except yaml.YAMLError as exc:
             print(exc)
+
+    # Reproducibility
+    seed_everything(config['general_params']['manual_seed'], True)
 
     # Prepare logger
     csv_logger = pl_loggers.CSVLogger(save_dir=config['CSVLogger_params']['save_dir'], name=config['CSVLogger_params']['name']) #, version=config['CSVLogger_params']['version']
@@ -42,6 +48,8 @@ if __name__ == '__main__':
     print(csv_logger.log_dir)
     checkpoint_callback = ModelCheckpoint(dirpath=save_checkpoints_path,**config['checkpoint_params'])
 
+    learning_rate_monitor_callback = LearningRateMonitor()
+
 
     # Prepare trainer and train the model depending on whether it is loaded from checkpoint or not
     if LOAD_CHECKPOINT_PATH is not None:
@@ -52,7 +60,8 @@ if __name__ == '__main__':
         config.update(tmp_dict)
     else:
         # Prepare trainer and trian model
-        trainer = Trainer(gpus=1, logger=csv_logger, callbacks=[checkpoint_callback],**config['trainer_params'])
+        trainer = Trainer(gpus=1, logger=csv_logger, callbacks=[learning_rate_monitor_callback, checkpoint_callback], **config['trainer_params']) #fast_dev_run=True, limit_train_batches=0.1, limit_val_batches=0.01,
+        # trainer = Trainer(gpus=-1, logger=csv_logger, callbacks=[learning_rate_monitor_callback, checkpoint_callback],strategy=DDPPlugin(find_unused_parameters=False),**config['trainer_params'])
         trainer.fit(model, dm)
     
     # Add version name to config
