@@ -5,15 +5,18 @@ import pytorch_lightning as pl
 from torch import Tensor
 
 
-class Lit_MKMMD_VAE(pl.LightningModule):
-    def __init__(self, learning_rate=0.0005, name='MMD_WAE', mmd_weight = 100,  kernel_type='imq', lantent_var=2.0):#kernel_mul=2.0, kernel_num=5, fix_sigma=None
-        super(Lit_MKMMD_VAE, self).__init__()
+class Lit_MMD_WAE(pl.LightningModule):
+    # kernel_mul=2.0, kernel_num=5, fix_sigma=None
+    def __init__(self, learning_rate=0.0005, name='MMD_WAE', mmd_weight=100,  kernel_type='imq', lantent_var=2.0, scheduler_gamma=0.95, weight_decay=0.0):
+        super(Lit_MMD_WAE, self).__init__()
 
-        self.name=name
-        self.learning_rate=learning_rate
-        self.mmd_weight=mmd_weight
-        self.kernel_type=kernel_type
+        self.name = name
+        self.learning_rate = learning_rate
+        self.mmd_weight = mmd_weight
+        self.kernel_type = kernel_type
         self.lantent_var = lantent_var
+        self.scheduler_gamma = scheduler_gamma
+        self.weight_decay = weight_decay
         self.save_hyperparameters()
 
         self.encoder = nn.Sequential(
@@ -32,17 +35,6 @@ class Lit_MKMMD_VAE(pl.LightningModule):
             torch.nn.Linear(400, 400),
             nn.BatchNorm1d(400),
             nn.LeakyReLU(),
-        )
-
-        self.z_mean = nn.Sequential(
-            nn.Linear(400, 12),
-            nn.LeakyReLU(),
-            nn.BatchNorm1d(12),
-            nn.Linear(12, 4)
-
-        )
-
-        self.z_log_var = nn.Sequential(
             nn.Linear(400, 12),
             nn.LeakyReLU(),
             nn.BatchNorm1d(12),
@@ -65,54 +57,18 @@ class Lit_MKMMD_VAE(pl.LightningModule):
             nn.Linear(400, 6)
         )
 
-    def reparameterize(self, z_mu, z_log_var):
-        eps = torch.randn(z_mu.size(0), z_mu.size(1), device=self.device)
-        z = z_mu + eps * torch.exp(z_log_var/2.)
-        return z
-
     def forward(self, x):
-        x = self.encoder(x)
-        z_mean, z_log_var = self.z_mean(x), self.z_log_var(x)
-        encoded = self.reparameterize(z_mean, z_log_var)
+        encoded = self.encoder(x)
         decoded = self.decoder(encoded)
-        return encoded, z_mean, z_log_var, decoded
-    
-    # def guassian_kernel(self, source, target, kernel_mul=2.0, kernel_num=5, fix_sigma=None):
-    #     n_samples = int(source.size()[0]) + int(target.size()[0])
-    #     total = torch.cat([source, target], dim=0)
+        return encoded, decoded
 
-    #     total0 = total.unsqueeze(0).expand(
-	# 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
-    #     total1 = total.unsqueeze(1).expand(
-	# 		int(total.size(0)), int(total.size(0)), int(total.size(1)))
-    #     L2_distance = ((total0-total1)**2).sum(2)
-    #     if fix_sigma:
-    #         bandwidth = fix_sigma
-    #     else:
-    #         bandwidth = torch.sum(L2_distance.data) / (n_samples**2-n_samples)
-    #         bandwidth /= kernel_mul ** (kernel_num // 2)
-    #         bandwidth_list = [bandwidth * (kernel_mul**i) for i in range(kernel_num)]
-    #         kernel_val = [torch.exp(-L2_distance / bandwidth_temp)
-	# 							for bandwidth_temp in bandwidth_list]
-    #     return sum(kernel_val)
-    
-    # def mkmmd_loss_function(self, source, target):
-    #     batch_size = int(source.size()[0])
-    #     kernels = self.guassian_kernel(source, target, kernel_mul=self.kernel_mul, kernel_num=self.kernel_num, fix_sigma=self.fix_sigma)
-    #     XX = kernels[:batch_size, :batch_size]
-    #     YY = kernels[batch_size:, batch_size:]
-    #     XY = kernels[:batch_size, batch_size:]
-    #     YX = kernels[batch_size:, :batch_size]
-    #     loss = torch.mean(XX + YY - XY -YX)
-    #     return loss
-
-    def mmdwae_loss_function(self,decoded,input,encoded) -> dict:
+    def mmdwae_loss_function(self, decoded, input, encoded) -> dict:
 
         batch_size = input.size(0)
-        bias_corr = batch_size *  (batch_size - 1)
-        mmd_weight= self.mmd_weight/bias_corr
+        bias_corr = batch_size * (batch_size - 1)
+        mmd_weight = self.mmd_weight/bias_corr
 
-        recons_loss =F.mse_loss(decoded, input)
+        recons_loss = F.mse_loss(decoded, input)
         mmd_loss = self.compute_mmd(encoded, mmd_weight)
 
         combined_loss = recons_loss + mmd_loss
@@ -126,8 +82,8 @@ class Lit_MKMMD_VAE(pl.LightningModule):
         D = x1.size(1)
         N = x1.size(0)
 
-        x1 = x1.unsqueeze(-2) # Make it into a column tensor
-        x2 = x2.unsqueeze(-3) # Make it into a row tensor
+        x1 = x1.unsqueeze(-2)  # Make it into a column tensor
+        x2 = x2.unsqueeze(-3)  # Make it into a row tensor
 
         """
         Usually the below lines are not required, especially in our case,
@@ -145,7 +101,6 @@ class Lit_MKMMD_VAE(pl.LightningModule):
             raise ValueError('Undefined kernel type.')
 
         return result
-
 
     def compute_rbf(self,
                     x1: Tensor,
@@ -165,9 +120,9 @@ class Lit_MKMMD_VAE(pl.LightningModule):
         return result
 
     def compute_inv_mult_quad(self,
-                               x1: Tensor,
-                               x2: Tensor,
-                               eps: float = 1e-7) -> Tensor:
+                              x1: Tensor,
+                              x2: Tensor,
+                              eps: float = 1e-7) -> Tensor:
         """
         Computes the Inverse Multi-Quadratics Kernel between x1 and x2,
         given by
@@ -179,7 +134,7 @@ class Lit_MKMMD_VAE(pl.LightningModule):
         """
         z_dim = x2.size(-1)
         C = 2 * z_dim * self.lantent_var
-        kernel = C / (eps + C + (x1 - x2).pow(2).sum(dim = -1))
+        kernel = C / (eps + C + (x1 - x2).pow(2).sum(dim=-1))
 
         # Exclude diagonal elements
         result = kernel.sum() - kernel.diag().sum()
@@ -195,33 +150,36 @@ class Lit_MKMMD_VAE(pl.LightningModule):
         priorz_z__kernel = self.compute_kernel(prior_z, z)
 
         mmd = mmd_weight * prior_z__kernel.mean() + \
-              mmd_weight * z__kernel.mean() - \
-              mmd_weight * 2 * priorz_z__kernel.mean()
+            mmd_weight * z__kernel.mean() - \
+            mmd_weight * 2 * priorz_z__kernel.mean()
         return mmd
 
     def training_step(self, batch, batch_idx):
         features = batch
         # Forward pass
-        encoded, _, _, decoded = self(features)
+        encoded, decoded = self(features)
 
-        combined_loss, mse_loss, mmd_loss = self.mmdwae_loss_function(decoded=decoded,encoded=encoded, input=batch)
-        
-        train_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "mmd_loss": mmd_loss.detach()}
+        combined_loss, mse_loss, mmd_loss = self.mmdwae_loss_function(
+            decoded=decoded, encoded=encoded, input=batch)
+
+        train_logs = {"combined_loss": combined_loss.detach(
+        ), "mse_loss": mse_loss.detach(), "mmd_loss": mmd_loss.detach()}
         # use key 'log'
         # return {"loss": combined_loss, 'log': tensorboard_logs}
         self.log("train_logs", train_logs, on_step=True)
         return combined_loss
 
-
     def validation_step(self, batch, batch_idx):
         features = batch
 
         # Forward pass
-        encoded, _, _, decoded = self(features)
-                        
-        combined_loss, mse_loss, mmd_loss = self.mmdwae_loss_function(decoded=decoded,encoded=encoded, input=batch)
+        encoded, decoded = self(features)
 
-        validation_logs = {"combined_loss": combined_loss.detach(), "mse_loss": mse_loss.detach(), "mmd_loss":mmd_loss.detach()}
+        combined_loss, mse_loss, mmd_loss = self.mmdwae_loss_function(
+            decoded=decoded, encoded=encoded, input=batch)
+
+        validation_logs = {"combined_loss": combined_loss.detach(
+        ), "mse_loss": mse_loss.detach(), "mmd_loss": mmd_loss.detach()}
         self.log("validation_logs", validation_logs)
         return combined_loss.detach()
         # return {"val_loss": combined_loss.detach(), 'log': tensorboard_logs}
@@ -235,9 +193,10 @@ class Lit_MKMMD_VAE(pl.LightningModule):
         self.log("validation_epoch_end_logs", val_epoch_end_logs)
         return avg_loss.detach()
         # return {'val_loss': avg_loss.detach(), 'log': tensorboard_logs}
-    
-    
+
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-
-
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer, gamma=self.scheduler_gamma)
+        return [optimizer], [scheduler]

@@ -1,0 +1,42 @@
+model_params:
+  name: MMD_WAE
+  learning_rate: 0.005
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+  mmd_weight: 100
+  kernel_type: imq
+
+general_params:
+  manual_seed: 1234
+
+DataModule_params:
+  data_path: /data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
+  batch_size: 10000
+  num_workers: 0
+  test_fraction: 0.0
+  validation_fraction: 0.4
+  shuffle_train: true
+  random_seed: 123
+  columns_keys:
+  - E
+  - X
+  - Y
+  - dX
+  - dY
+  - dZ
+  
+checkpoint_params:
+  # dirpath: /home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lighting_Autoencoders/checkpoints/BetaVAE/
+  filename: checkpoint_MMD_VAE_0406_{epoch}epoch
+  every_n_epochs: 10
+  auto_insert_metric_name: false
+  save_last: true
+  save_top_k: -1
+
+trainer_params:
+  max_epochs: 40
+  log_every_n_steps: 1
+
+CSVLogger_params:
+  save_dir: "/home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lightning_Autoencoders/results"
+  name: 'MMD_WAE'
