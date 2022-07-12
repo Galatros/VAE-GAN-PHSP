@@ -1,0 +1,45 @@
+model_params:
+  name: AAE
+  latent_dim: 6
+  learning_rate: 0.005
+  # critic_iterations: 3
+  beta_weight: 1
+  b1: 0.5
+  b2: 0.999
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+
+general_params:
+  manual_seed: 1234
+
+DataModule_params:
+  data_path: /data1/dose-3d-generative/data/training-data/PHSPs_without_VR/Filtered_E5.6_s0.0.npy
+  batch_size: 10000
+  num_workers: 0
+  test_fraction: 0.0
+  validation_fraction: 0.4
+  shuffle_train: true
+  random_seed: 123
+  columns_keys:
+  - E
+  - X
+  - Y
+  - dX
+  - dY
+  - dZ
+  
+checkpoint_params:
+  filename: checkpoint_AAE_0907_{epoch}epoch
+  every_n_epochs: 5
+  auto_insert_metric_name: false
+  save_last: true
+  save_top_k: -1
+
+trainer_params:
+  max_epochs: 60
+  log_every_n_steps: 1
+
+
+CSVLogger_params:
+  save_dir: "/home/jakmic/Projekty/dose3d-phsp/AE_VAE/Lightning_Autoencoders/results"
+  name: 'AAE'
